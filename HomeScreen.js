@@ -1,37 +1,74 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { auth, firestore } from './firebase'; // Import Firestore
+import React, { useRef, useEffect, useState } from 'react';
+import { Animated, Text, View, StyleSheet, TouchableOpacity, PanResponder } from 'react-native';
+import { auth, firestore } from './firebase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation } from '@react-navigation/core';
-import { doc, getDoc } from 'firebase/firestore'; // Import Firestore methods
+import { doc, getDoc } from 'firebase/firestore';
 
+// FadeInView component for fade-in animation
+const FadeInView = (props) => {
+  const fadeAnim = useRef(new Animated.Value(0)).current; // Initial opacity set to 0
+
+  useEffect(() => {
+    Animated.timing(fadeAnim, {
+      toValue: 1, // Fade to fully visible
+      duration: 10000, // Animation duration (10 seconds)
+      useNativeDriver: true,
+    }).start();
+  }, [fadeAnim]);
+
+  return (
+    <Animated.View // Special animatable View
+      style={{
+        ...props.style,
+        opacity: fadeAnim, // Bind opacity to animated value
+      }}
+    >
+      {props.children}
+    </Animated.View>
+  );
+};
+
+// HomeScreen component with fade-in text and draggable box
 const HomeScreen = () => {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const navigation = useNavigation();
 
-  // Load user data from Firestore and AsyncStorage
+  // PanResponder setup for draggable box
+  const pan = useRef(new Animated.ValueXY()).current;
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderMove: Animated.event(
+        [null, { dx: pan.x, dy: pan.y }],
+        { useNativeDriver: false } // UseNativeDriver set to false for gestures
+      ),
+      onPanResponderRelease: () => {
+        pan.extractOffset(); // This ensures the box stays where it was dragged
+      },
+    })
+  ).current;
+
+  // Load user data
   useEffect(() => {
     const loadUserData = async () => {
-      const user = auth.currentUser; // Get currently authenticated user
+      const user = auth.currentUser;
 
       if (user) {
-        const userDocRef = doc(firestore, 'users', user.uid); // Reference to the Firestore document
-        const userDoc = await getDoc(userDocRef); // Fetch the document
+        const userDocRef = doc(firestore, 'users', user.uid);
+        const userDoc = await getDoc(userDocRef);
 
         if (userDoc.exists()) {
           const userData = userDoc.data();
-          setName(userData.name || ''); // Set the name from Firestore
-          setEmail(userData.email || ''); // Set the email from Firestore
+          setName(userData.name || '');
+          setEmail(userData.email || '');
 
-          // Save the data in AsyncStorage for persistence
           await AsyncStorage.setItem('userName', userData.name || '');
           await AsyncStorage.setItem('userEmail', userData.email || '');
-        } else {
-          console.log('No such document!');
         }
       } else {
-        // If no user is logged in, load from AsyncStorage
         const storedName = await AsyncStorage.getItem('userName');
         const storedEmail = await AsyncStorage.getItem('userEmail');
         if (storedName) setName(storedName);
@@ -48,11 +85,33 @@ const HomeScreen = () => {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Welcome to the App</Text>
-      <Text style={styles.subTitle}>{name ? `Hello, ${name}!` : 'User'}</Text>
-      <Text style={styles.subTitle}>{email}</Text>
+      {/* Centered fade-in text */}
+      <FadeInView style={{ width: 250, height: 70, backgroundColor: 'powderblue', justifyContent: 'center', alignItems: 'center', marginBottom: 20,transform: [{ translateY: -30 }]}}>
+        <Text style={{ fontSize: 28, textAlign: 'center', margin: 0, paddingTop: 10,marginTop: -10 }}>
+          Logged in
+        </Text>
+      </FadeInView>
+
+      {/* Display User Info */}
+      <Text style={styles.userInfoText}>Email: {email}</Text>
+      <Text style={styles.userInfoText}>Name: {name}</Text>
+
+      {/* Draggable Box */}
+      <View style={styles.dragContainer}>
+        <Text style={styles.titleText}>Drag this box!</Text>
+        <Animated.View
+          style={{
+            transform: [{ translateX: pan.x }, { translateY: pan.y }],
+          }}
+          {...panResponder.panHandlers} // Attach the panHandlers for gesture
+        >
+          <View style={styles.box} />
+        </Animated.View>
+      </View>
+
+      {/* Logout Button */}
       <TouchableOpacity onPress={handleLogout} style={styles.button}>
-        <Text style={styles.buttonText}>Logout</Text>
+        <Text style={styles.buttonText}>Sign out</Text>
       </TouchableOpacity>
     </View>
   );
@@ -64,17 +123,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#E3F2FD',
+    padding: 20,
   },
-  title: {
-    fontSize: 30,
-    fontWeight: 'bold',
-    color: '#1E88E5',
-    marginBottom: 20,
+  dragContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 20,
   },
-  subTitle: {
-    fontSize: 20,
-    color: '#64B5F6',
-    marginBottom: 10,
+  userInfoText: {
+    fontSize: 16,
+    textAlign: 'center',
+    marginVertical: 5,
   },
   button: {
     backgroundColor: '#2196F3',
@@ -87,6 +146,17 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  titleText: {
+    fontSize: 14,
+    lineHeight: 24,
+    fontWeight: 'bold',
+  },
+  box: {
+    height: 150,
+    width: 150,
+    backgroundColor: 'pink',
+    borderRadius: 5,
   },
 });
 
